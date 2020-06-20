@@ -290,6 +290,13 @@ class VenmoSource(Source):
             elif t == 'Charge' or t == 'Payment':
                 has_transfer = raw_txn[CSV_FUNDING_SOURCE_KEY] != 'Venmo balance' and raw_txn[CSV_DESTINATION_KEY] != 'Venmo balance'
                 has_payment = True
+            elif t == 'Add Funds':
+                #raise NotImplementedError
+                has_transfer = True
+                has_payment = False
+            elif t == 'Merchant Transaction':
+                has_transfer = False
+                has_payment = True
             else:
                 raise RuntimeError('Unknown transaction type: %r' % (t,))
             for has, matched_postings, make in ((has_transfer, matched_transfer_postings, self.make_transfer_transaction),
@@ -348,7 +355,7 @@ class VenmoSource(Source):
     def _make_transaction(self, raw_txn: RawTransaction, link: bool, is_transfer: bool):
         amount = original_amount = amount_parsing.parse_amount(raw_txn[CSV_AMOUNT_TOTAL_KEY])
         txn_type = raw_txn[CSV_TYPE_KEY]
-        is_payment_txn = txn_type == 'Payment' or txn_type == 'Charge'
+        is_payment_txn = txn_type == 'Payment' or txn_type == 'Charge' or txn_type == 'Merchant Transaction'
         if is_transfer and is_payment_txn:
             amount = -amount
         txn_time = parse_csv_date(raw_txn[CSV_DATETIME_KEY])
@@ -366,11 +373,12 @@ class VenmoSource(Source):
                 )
         note = re.sub(r'\s+', ' ', raw_txn[CSV_NOTE_KEY])
         payee = 'Venmo'
+        payment_keys = set(['Payment', 'Merchant Transaction'])
         if is_payment_txn:
             if original_amount.number > ZERO:
-                payee = assets_posting.meta[VENMO_PAYER_KEY] = raw_txn[CSV_FROM_KEY if txn_type == 'Payment' else CSV_TO_KEY]
+                payee = assets_posting.meta[VENMO_PAYER_KEY] = raw_txn[CSV_FROM_KEY if txn_type in payment_keys else CSV_TO_KEY]
             else:
-                payee = assets_posting.meta[VENMO_PAYEE_KEY] = raw_txn[CSV_TO_KEY if txn_type == 'Payment' else CSV_FROM_KEY]
+                payee = assets_posting.meta[VENMO_PAYEE_KEY] = raw_txn[CSV_TO_KEY if txn_type in payment_keys else CSV_FROM_KEY]
         if note:
             assets_posting.meta[VENMO_DESCRIPTION_KEY] = note
         if is_transfer:
